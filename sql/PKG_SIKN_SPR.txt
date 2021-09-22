@@ -1,0 +1,176 @@
+create or replace package body PKG_SIKN_SPR is
+  /* Процедура получения массива объектов из таблицы sikn_spr */
+  PROCEDURE GET_SIKN_SPR is
+    lcJson clob := null;
+  begin
+  
+    select json_arrayagg(json_object(spr.recid,
+                                     spr.pspname,
+                                     spr.pspowner,
+                                     spr.nsikn,
+                                     'NU' VALUE fils.name,
+                                     'NUKOD' VALUE spr.nu,
+                                     --spr.nu,
+                                     --spr.priem,
+                                     'PRIEM' VALUE spk.name,                                    
+                                     'PRIEMKOD' VALUE spr.priem,
+                                     'MEAS_SUBJ' VALUE smk.name, 
+                                     'MEAS_SUBJKOD' VALUE spr.meas_subj,                                   
+                                     --spr.meas_subj,
+                                     spr.altfil,
+                                     --'SIKNTYPE' VALUE case when spr.sikntype='neft' then 'Нефть'
+                                     --when spr.sikntype='np' then 'Нефтепродукт'
+                                     --when spr.sikntype='npb' then 'СИКН нефтебазы'
+                                     --end,
+                                     --spr.sikntype,
+                                     'SIKNTYPE' VALUE stype.name,
+                                     'SIKNTYPEKOD' VALUE spr.sikntype,
+                                     spr.active,
+                                     spr.kmh_order returning clob)
+                         order by to_number(spr.nu), spr.pspname, spr.kmh_order returning clob)
+      into lcJson
+      from sikn_spr spr
+      join nsi.filials fils
+        on spr.nu = fils.kod
+      join sikntype stype
+        on spr.sikntype = stype.kod
+      left join sikn_priemkod spk
+        on spr.priem = spk.kod
+      left join sikn_measkod smk
+        on spr.meas_subj = smk.kod
+     where spr.active = 1;
+  
+    nsi2.print_json_response(pResult => lcJson);
+  end;
+
+  /* Процедура получения массива наименований и владельцев */
+  PROCEDURE GET_PSPNAME_AND_OWNER is
+    lcJson clob := null;
+  begin
+    select distinct json_arrayagg(json_object(spr.pspname,
+                                              spr.pspowner returning clob)
+                                  returning clob)
+      into lcJson
+      from sikn_spr spr;
+  
+    nsi2.print_json_response(pResult => lcJson);
+  end;
+
+  /* Процедура получения массива филиалов */
+  PROCEDURE GET_FILIALS is
+    lcJson clob := null;
+  begin
+    select distinct json_arrayagg(json_object(n.kod, n.name returning clob)
+                                  returning clob)
+      into lcJson
+      from nsi.filials n;
+  
+    nsi2.print_json_response(pResult => lcJson);
+  end;
+
+  /* Процедура получения массива типов */
+  PROCEDURE GET_SIKNTYPE is
+    lcJson clob := null;
+  begin
+    select distinct json_arrayagg(json_object(st.kod,
+                                              st.name returning clob)
+                                  returning clob)
+      into lcJson
+      from sikntype st;
+  
+    nsi2.print_json_response(pResult => lcJson);
+  end;
+  
+  /* Процедура получения массива приема */
+  PROCEDURE GET_SIKN_PRIEMKOD is
+    lcJson clob := null;
+  begin
+    select distinct json_arrayagg(json_object(sp.kod,
+                                              sp.name returning clob)
+                                  returning clob)
+      into lcJson
+      from sikn_priemkod sp;
+  
+    nsi2.print_json_response(pResult => lcJson);
+  end; 
+  
+  /* Процедура получения массива предметов */
+  PROCEDURE GET_SIKN_MEASKOD is
+    lcJson clob := null;
+  begin
+    select distinct json_arrayagg(json_object(sm.kod,
+                                              sm.name returning clob)
+                                  returning clob)
+      into lcJson
+      from sikn_measkod sm;
+  
+    nsi2.print_json_response(pResult => lcJson);
+  end; 
+  
+  
+  /* Процедура сохранения объекта*/
+  PROCEDURE SAVE_SPR_OBJECT(pRECID     in varchar2 := null,
+                            pPSPNAME   in varchar2 := null,
+                            pPSPOWNER  in varchar2 := null,
+                            pNSIKN     in varchar2 := null,
+                            pNU        in varchar2 := null,
+                            pPRIEM     in varchar2 := null,
+                            pMEAS_SUBJ in varchar2 := null,
+                            pALTFIL    in varchar2 := null,
+                            pSIKNTYPE  in varchar2 := null,
+                            pACTIVE    in varchar2 := null,
+                            pKMH_ORDER in varchar2 := null) is
+  begin
+    if pRECID is null or pRECID = '-1' then
+    
+      insert into sikn_spr
+        (recid,
+         pspname,
+         pspowner,
+         nsikn,
+         nu,
+         priem,
+         meas_subj,
+         altfil,
+         sikntype,
+         active,
+         kmh_order)
+      values
+        ((select max(recid) + 1 from sikn_spr),
+         pPSPNAME,
+         pPSPOWNER,
+         pNSIKN,
+         pNU,
+         to_number(pPRIEM),
+         pMEAS_SUBJ,
+         pALTFIL,
+         pSIKNTYPE,
+         to_number(pACTIVE),
+         to_number(pKMH_ORDER));
+    else
+      update sikn_spr
+         set pspname   = pPSPNAME,
+             pspowner  = pPSPOWNER,
+             nsikn     = pNSIKN,
+             nu        = pNU,
+             priem     = to_number(pPRIEM),
+             meas_subj = pMEAS_SUBJ,
+             altfil    = pALTFIL,
+             sikntype  = pSIKNTYPE,
+             active    = to_number(pACTIVE),
+             kmh_order = to_number(pKMH_ORDER)
+       where recid = to_number(pRECID);
+    end if;
+    htp.p('ok');
+  end;
+
+  /* Процедура удаления объекта*/
+  PROCEDURE DELETE_SPR_OBJECT(pRECID in varchar2 := null) is
+  begin
+    if pRECID is not null and pRECID != '-1' then
+      update sikn_spr set active = 0 where recid = to_number(pRECID);
+    end if;
+    htp.p('ok');
+  end;
+
+end PKG_SIKN_SPR;
